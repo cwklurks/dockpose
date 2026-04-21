@@ -32,3 +32,8 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # PAT scoped to cwklurks/homebrew-tap with contents:write.
+          # Required for goreleaser to push the generated Formula.
+          # Without it, the brews.skip_upload template resolves to
+          # "true" and the push is skipped.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
