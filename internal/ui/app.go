@@ -172,24 +172,32 @@ func (m AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case ViewDetail:
 		return m.updateDetail(msg)
 	case ViewInspect:
-		if msg.String() == "esc" || msg.String() == "q" {
-			m.CurrentView = ViewDetail
-		}
-		return m, nil
+		return m.handleInspectKey(msg)
 	case ViewLogs:
-		if m.logModel != nil {
-			m.logModel.Update(msg)
-		}
-		if k := msg.String(); k == "esc" || k == "q" || k == "ctrl+c" {
-			if m.logModel != nil {
-				m.logModel.Stop()
-			}
-			m.CurrentView = ViewDetail
-		}
-		return m, nil
+		return m.handleLogsKey(msg)
 	default:
 		return m.handleStackListKey(msg)
 	}
+}
+
+func (m AppModel) handleInspectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if k := msg.String(); k == "esc" || k == "q" {
+		m.CurrentView = ViewDetail
+	}
+	return m, nil
+}
+
+func (m AppModel) handleLogsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.logModel != nil {
+		m.logModel.Update(msg)
+	}
+	if k := msg.String(); k == "esc" || k == "q" || k == "ctrl+c" {
+		if m.logModel != nil {
+			m.logModel.Stop()
+		}
+		m.CurrentView = ViewDetail
+	}
+	return m, nil
 }
 
 func (m AppModel) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -211,18 +219,42 @@ func (m AppModel) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// stackListAction maps a key to a stack-action handler. These are
+// destructive or modal handlers that may emit a Cmd, so they get
+// dispatched through a table to keep handleStackListKey readable.
+var stackListActions = map[string]func(AppModel) (tea.Model, tea.Cmd){
+	"enter": AppModel.openStackDetail,
+	"u":     AppModel.handleStackUp,
+	"d":     AppModel.handleStackDown,
+	"r":     AppModel.handleStackRestart,
+	"p":     AppModel.handleStackPull,
+	"e":     AppModel.openEnvEditor,
+	"c":     AppModel.openContextPicker,
+}
+
 func (m AppModel) handleStackListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	visible := m.visibleStacks()
-	switch msg.String() {
-	case "q", "ctrl+c":
+	k := msg.String()
+	if k == "q" || k == "ctrl+c" {
 		return m, tea.Quit
+	}
+	if fn, ok := stackListActions[k]; ok {
+		return fn(m)
+	}
+	m = m.applyNavKey(k)
+	return m, nil
+}
+
+// applyNavKey handles non-action keys: navigation, filter entry, help,
+// and esc. Returns the (possibly mutated) model.
+func (m AppModel) applyNavKey(k string) AppModel {
+	switch k {
 	case "?":
 		m.showHelp = true
 	case "/":
 		m.filterEditing = true
 		m.filter = ""
 	case "j", "down":
-		if m.cursor < len(visible)-1 {
+		if m.cursor < len(m.visibleStacks())-1 {
 			m.cursor++
 		}
 	case "k", "up":
@@ -232,29 +264,15 @@ func (m AppModel) handleStackListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "g":
 		m.cursor = 0
 	case "G":
-		if n := len(visible); n > 0 {
+		if n := len(m.visibleStacks()); n > 0 {
 			m.cursor = n - 1
 		}
-	case "enter":
-		return m.openStackDetail()
-	case "u":
-		return m.handleStackUp()
-	case "d":
-		return m.handleStackDown()
-	case "r":
-		return m.handleStackRestart()
-	case "p":
-		return m.handleStackPull()
-	case "e":
-		return m.openEnvEditor()
-	case "c":
-		return m.openContextPicker()
 	case "esc":
 		m.filter = ""
 		m.cursor = 0
 		m.CurrentView = ViewStackList
 	}
-	return m, nil
+	return m
 }
 
 func (m AppModel) selectedStack() (stack.Stack, bool) {

@@ -167,7 +167,9 @@ func (e *castEncoder) writeHeader() {
 		"title":     "dockpose --demo",
 	}
 	b, _ := json.Marshal(hdr)
-	fmt.Fprintln(e.w, string(b))
+	if _, err := fmt.Fprintln(e.w, string(b)); err != nil {
+		panic(err)
+	}
 }
 
 // writeFrame emits a clear-screen + frame at time t.
@@ -176,5 +178,7 @@ func (e *castEncoder) writeFrame(t float64, frame string) {
 	payload := clear + frame
 	b, _ := json.Marshal(payload)
 	// asciinema event: [time, "o", text]
-	fmt.Fprintf(e.w, "[%.3f, \"o\", %s]\n", t, string(b))
+	if _, err := fmt.Fprintf(e.w, "[%.3f, \"o\", %s]\n", t, string(b)); err != nil {
+		panic(err)
+	}
 }
