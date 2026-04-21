@@ -1,0 +1,9 @@
+services:
+  a:
+    image: a
+    depends_on:
+      - b
+  b:
+    image: b
+    depends_on:
+      - a

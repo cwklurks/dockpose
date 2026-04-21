@@ -1,0 +1,61 @@
+version: 2
+
+project_name: dockpose
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: dockpose
+    main: ./cmd/dockpose
+    binary: dockpose
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+nfpms:
+  - id: packages
+    package_name: dockpose
+    file_name_template: "{{ .ConventionalFileName }}"
+    homepage: https://github.com/cwklurks/dockpose
+    description: A keyboard-driven TUI for managing Docker Compose stacks.
+    license: MIT
+    formats:
+      - deb
+      - rpm
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

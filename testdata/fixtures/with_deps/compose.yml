@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:15
+  redis:
+    image: redis:alpine
+  app:
+    image: app:latest
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+  worker:
+    image: worker:latest
+    depends_on:
+      - app

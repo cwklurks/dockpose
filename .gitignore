@@ -1,0 +1,27 @@
+# Binaries
+/dockpose
+/dockpose-discover
+*.exe
+*.test
+*.out
+
+# Build / release artifacts
+dist/
+coverage.out
+coverage.html
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local artifacts (non-project)
+claude-tmux.log
+v1-spec.md

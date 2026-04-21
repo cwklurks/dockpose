@@ -1,0 +1,12 @@
+services:
+  nginx:
+    image: nginx:alpine
+  postgres:
+    image: postgres:15
+    profiles:
+      - full
+  redis:
+    image: redis:alpine
+    profiles:
+      - full
+      - debug
