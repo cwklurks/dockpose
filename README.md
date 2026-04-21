@@ -272,13 +272,17 @@ vhs docs/media/demo.tape
 
 ## Roadmap
 
+Near-term, in rough priority order:
+
 - **v0.1.0** — Cross-compiled release binaries via [GoReleaser](https://goreleaser.com), Homebrew tap, AUR PKGBUILD, Scoop manifest.
-- **Persistent stack registry** — Honor the spec's `~/.config/dockpose/stacks.toml` cache and lazy refresh.
-- **Filter persistence** — Remember active filter / cursor across sessions.
-- **Pull progress** — Live `docker compose pull` progress in the status bar instead of a single toast.
-- **Healthcheck-aware status** — Differentiate "running but unhealthy" via Docker's healthcheck output rather than treating all running containers as healthy.
-- **Container events stream** — Replace polling with Docker's events API for sub-second updates.
-- **Theming** — Multiple color themes (currently GitHub Dark only).
+- **Persistent stack registry** — honor the `~/.config/dockpose/stacks.toml` cache and refresh it lazily instead of rescanning every launch.
+- **Filter persistence** — remember active filter and cursor position across sessions.
+- **Pull progress** — live `docker compose pull` progress in the status bar instead of a single "done" toast.
+- **Healthcheck-aware status** — distinguish "running but unhealthy" using Docker healthchecks instead of treating every running container as healthy.
+- **Container events stream** — replace the 2s poll with Docker's events API for sub-second updates.
+- **Theming** — more than the current GitHub Dark palette.
+
+Further out: Podman backend, Compose file editor, secrets integration. [Open an issue](https://github.com/cwklurks/dockpose/issues) if there's something you want sooner.
 
 ## Contributing
 
