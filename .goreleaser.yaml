@@ -41,6 +41,7 @@ nfpms:
     homepage: https://github.com/cwklurks/dockpose
     description: A keyboard-driven TUI for managing Docker Compose stacks.
     license: MIT
+    maintainer: Connor Klann <connorklann@gmail.com>
     formats:
       - deb
       - rpm
