@@ -15,7 +15,9 @@
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="MIT License">
   </a>
-  <img src="https://img.shields.io/badge/Status-pre--v0.1.0-f59e0b?style=for-the-badge" alt="pre-v0.1.0">
+  <a href="https://github.com/cwklurks/dockpose/releases/latest">
+    <img src="https://img.shields.io/github/v/release/cwklurks/dockpose?style=for-the-badge&color=10b981" alt="Latest release">
+  </a>
 </p>
 
 <br>
@@ -47,7 +49,7 @@ dockpose replaces that dance. It finds every Compose file on your machine, shows
 The core idea: **a stack is the unit you care about**, not an individual container. Most container TUIs get this backwards.
 
 > [!NOTE]
-> dockpose is pre-v0.1.0. The TUI is fully functional and demo mode works end to end; cross-compiled releases and packaging (Homebrew, AUR, Scoop) are landing next.
+> v0.1.0 is live on GitHub Releases and Homebrew — see [Install](#install). AUR and Scoop are on the roadmap.
 
 ## Who It's For
 
@@ -140,7 +142,7 @@ Edit a stack's `.env` inline without ever pasting secrets into your shell histor
 
 <br>
 
-One Go binary, cross-compiled for macOS, Linux, and Windows on amd64 and arm64. Drop it on any box. Packaging for Homebrew, AUR, Scoop, apt, and rpm is on the v0.1.0 roadmap.
+One Go binary, cross-compiled for macOS, Linux, and Windows on amd64 and arm64. Install via Homebrew, `.deb`, `.rpm`, or a raw tarball — see [Install](#install). AUR and Scoop coming next.
 
 </details>
 
@@ -233,8 +235,41 @@ A 2-second tick refreshes container states for every known stack using the same 
 
 ## Install
 
-> [!IMPORTANT]
-> Pre-v0.1.0: packaging (Homebrew, AUR, Scoop, apt, rpm) is landing soon. For now, build from source — it's one `go build`.
+### Homebrew (macOS + Linux)
+
+```sh
+brew install cwklurks/tap/dockpose
+```
+
+### Linux (binary)
+
+```sh
+curl -fsSL https://github.com/cwklurks/dockpose/releases/latest/download/dockpose_$(uname -s)_$(uname -m).tar.gz \
+  | sudo tar -xz -C /usr/local/bin dockpose
+dockpose --version
+```
+
+Replace `$(uname -s)_$(uname -m)` with e.g. `Linux_arm64` if auto-detection doesn't match your shell.
+
+### Debian / Ubuntu
+
+Grab the `.deb` from the [latest release](https://github.com/cwklurks/dockpose/releases/latest) and:
+
+```sh
+sudo dpkg -i dockpose_0.1.0_amd64.deb   # or _arm64.deb
+```
+
+### Fedora / RHEL
+
+```sh
+sudo rpm -i dockpose-0.1.0-1.x86_64.rpm   # or .aarch64.rpm
+```
+
+### Windows
+
+Download the zip from the [latest release](https://github.com/cwklurks/dockpose/releases/latest), extract, and put `dockpose.exe` on your `PATH`.
+
+### Build from source
 
 ```sh
 git clone https://github.com/cwklurks/dockpose.git
@@ -274,7 +309,7 @@ vhs docs/media/demo.tape
 
 Near-term, in rough priority order:
 
-- **v0.1.0** — Cross-compiled release binaries via [GoReleaser](https://goreleaser.com), Homebrew tap, AUR PKGBUILD, Scoop manifest.
+- **AUR + Scoop** — Arch and Windows packaging. Homebrew + deb/rpm shipped in v0.1.0.
 - **Persistent stack registry** — honor the `~/.config/dockpose/stacks.toml` cache and refresh it lazily instead of rescanning every launch.
 - **Filter persistence** — remember active filter and cursor position across sessions.
 - **Pull progress** — live `docker compose pull` progress in the status bar instead of a single "done" toast.

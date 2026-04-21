@@ -46,6 +46,36 @@ nfpms:
       - deb
       - rpm
 
+# Homebrew tap.
+#
+# NOTE: the default GITHUB_TOKEN cannot push to cwklurks/homebrew-tap
+# because it's scoped to the current repository. A personal access token
+# (or fine-grained token) with `contents: write` on homebrew-tap must be
+# set as the repo secret HOMEBREW_TAP_GITHUB_TOKEN.
+#
+# When the secret is absent, `skip_upload: auto` keeps the release from
+# failing — the formula is generated locally but not pushed.
+brews:
+  - name: dockpose
+    repository:
+      owner: cwklurks
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/cwklurks/dockpose
+    description: A keyboard-driven TUI for managing Docker Compose stacks.
+    license: MIT
+    skip_upload: auto
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "chore(brew): bump {{ .ProjectName }} to {{ .Tag }}"
+    test: |
+      system "#{bin}/dockpose", "--version"
+    install: |
+      bin.install "dockpose"
+
 checksum:
   name_template: checksums.txt
 
