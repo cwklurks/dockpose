@@ -162,6 +162,10 @@ func (m AppModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.filterEditing {
 		return m.handleFilterKey(msg)
 	}
+	if msg.String() == "?" {
+		m.showHelp = true
+		return m, nil
+	}
 	switch m.CurrentView {
 	case ViewProfilePicker:
 		return m.handleProfilePicker(msg)
@@ -244,12 +248,10 @@ func (m AppModel) handleStackListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// applyNavKey handles non-action keys: navigation, filter entry, help,
+// applyNavKey handles non-action keys: navigation, filter entry,
 // and esc. Returns the (possibly mutated) model.
 func (m AppModel) applyNavKey(k string) AppModel {
 	switch k {
-	case "?":
-		m.showHelp = true
 	case "/":
 		m.filterEditing = true
 		m.filter = ""
@@ -853,7 +855,7 @@ func (m AppModel) viewDetail() string {
 func (m AppModel) viewInspect() string {
 	header := m.renderHeader("· inspect")
 	body := theme.PanelStyle.Render(m.inspectText)
-	footer := m.renderFooter("esc back · q quit")
+	footer := m.renderFooter("esc/q back")
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
 }
 
