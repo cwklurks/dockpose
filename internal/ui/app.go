@@ -60,7 +60,14 @@ type AppModel struct {
 
 	cursor      int
 	selectedIdx int
-	statuses    map[string]string
+	// statuses holds a cached aggregate-status string per stack (e.g.
+	// "3/4 up", "0/6 down", "2/4 degraded"). Populated by the polling
+	// loop so the stack list can render without re-querying Docker.
+	statuses map[string]string
+	// stackStates holds the last-seen per-service container state for
+	// each stack. Lets the list view paint the dot strip and the
+	// detail view open without a blocking query.
+	stackStates map[string][]docker.ContainerState
 
 	width  int
 	height int
@@ -85,6 +92,7 @@ func NewAppModel() AppModel {
 	return AppModel{
 		CurrentView: ViewStackList,
 		statuses:    make(map[string]string),
+		stackStates: make(map[string][]docker.ContainerState),
 		width:       100,
 		height:      30,
 	}
@@ -541,12 +549,15 @@ func PollingCmd(interval time.Duration) tea.Cmd {
 // refreshStackStatuses queries the data source for container status of each stack.
 func (m *AppModel) refreshStackStatuses(ctx context.Context) {
 	for i := range m.stacks {
-		containers, err := m.source.ListContainers(ctx, m.stacks[i].Name)
+		name := m.stacks[i].Name
+		containers, err := m.source.ListContainers(ctx, name)
 		if err != nil {
-			m.statuses[m.stacks[i].Name] = "error"
+			m.statuses[name] = "error"
+			m.stackStates[name] = nil
 			continue
 		}
-		m.statuses[m.stacks[i].Name] = aggregateStatus(containers)
+		m.statuses[name] = aggregateStatus(containers)
+		m.stackStates[name] = containers
 	}
 }
 
@@ -778,7 +789,7 @@ func (m AppModel) viewStackList() string {
 	}
 
 	for i, st := range visible {
-		dots := renderDots(st, m.statuses[st.Name])
+		dots := renderDots(st, m.stackStates[st.Name], m.statuses[st.Name])
 		statusCell := padDisplay(dots, colStatus)
 		summary := summaryFor(st, m.statuses[st.Name])
 		profiles := strings.Join(st.Profiles, ",")
@@ -907,32 +918,49 @@ func (m AppModel) viewHelp() string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
 }
 
-// renderDots returns the spec's per-service status dot strip.
-func renderDots(st stack.Stack, status string) string {
-	// Prefer the explicit per-service status when available; the
-	// aggregate string is just a hint for fallback.
-	max := len(st.Services)
-	if max == 0 {
+// renderDots paints one dot per service, colored by live per-service
+// health. The per-service states come from the polling cache; if the
+// cache is empty (very first render, or source error) we fall back to
+// the aggregate summary string so the row is never blank.
+func renderDots(st stack.Stack, states []docker.ContainerState, summary string) string {
+	total := len(st.Services)
+	if total == 0 {
 		return theme.MutedStyle.Render("·")
 	}
-	if max > 6 {
-		max = 6
+	const maxDots = 6
+	if len(states) > 0 {
+		byService := make(map[string]docker.ContainerState, len(states))
+		for _, c := range states {
+			byService[c.Service] = c
+		}
+		var b strings.Builder
+		shown := 0
+		for _, svc := range st.Services {
+			if shown >= maxDots {
+				break
+			}
+			c := byService[svc.Name]
+			b.WriteString(dotFor(c.Status, c.Health))
+			shown++
+		}
+		if len(st.Services) > maxDots {
+			b.WriteString(theme.MutedStyle.Render("…"))
+		}
+		return b.String()
 	}
-	// We don't have per-service status here without a Source query;
-	// approximate using the aggregate "x/y up" summary.
-	running, total := parseSummary(status, len(st.Services))
-	if total == 0 {
-		total = len(st.Services)
+
+	// Fallback: parse the aggregate summary.
+	running, _ := parseSummary(summary, total)
+	shown := total
+	if shown > maxDots {
+		shown = maxDots
 	}
-	if running > max {
-		running = max
-	}
-	if total > max {
-		total = max
+	if running > shown {
+		running = shown
 	}
 	dots := strings.Repeat(theme.RunningStyle.Render("●"), running)
-	rest := total - running
-	if strings.Contains(status, "degraded") && rest > 0 {
+	rest := shown - running
+	if strings.Contains(summary, "degraded") && rest > 0 {
 		dots += theme.UnhealthyStyle.Render("◐")
 		rest--
 	}
@@ -943,6 +971,26 @@ func renderDots(st stack.Stack, status string) string {
 		dots = theme.MutedStyle.Render("·")
 	}
 	return dots
+}
+
+// dotFor returns the single colored glyph for a service given its
+// status + health.
+func dotFor(status, health string) string {
+	switch status {
+	case "running":
+		switch health {
+		case "unhealthy", "starting":
+			return theme.UnhealthyStyle.Render("◐")
+		default:
+			return theme.RunningStyle.Render("●")
+		}
+	case "unhealthy", "starting", "paused":
+		return theme.UnhealthyStyle.Render("◐")
+	case "stopped":
+		return theme.StoppedStyle.Render("○")
+	default:
+		return theme.MutedStyle.Render("·")
+	}
 }
 
 // padDisplay pads s to displayWidth columns (using lipgloss.Width to ignore ANSI).

@@ -188,21 +188,24 @@ func initialState(st stack.Stack) []docker.ContainerState {
 }
 
 // advance applies a small state change so the demo feels live.
+//
+// Two motions happen on each tick:
+//   - dev-api starts stopped, transitions through "starting", then
+//     lands on running/healthy (the happy-path upgrade scenario).
+//   - monitoring keeps one unhealthy service and one stopped service
+//     so the yellow ◐ and red ○ dots remain visible throughout. They
+//     aren't noise — they're what the product is for.
 func advance(c docker.ContainerState, tick int, stackName string, idx int) docker.ContainerState {
-	// dev-api starts stopped; bring it up after a few ticks.
-	if stackName == "dev-api" && tick == 4 {
-		c.Status = "starting"
-		c.Health = "starting"
-	}
-	if stackName == "dev-api" && tick == 6 {
-		c.Status = "running"
-		c.Health = "healthy"
-		c.Uptime = time.Duration(idx+1) * 42 * time.Second
-	}
-	// monitoring: unhealthy service recovers after a while.
-	if stackName == "monitoring" && tick == 5 && c.Status == "unhealthy" {
-		c.Status = "running"
-		c.Health = "healthy"
+	if stackName == "dev-api" {
+		switch {
+		case tick >= 2 && tick < 5:
+			c.Status = "starting"
+			c.Health = "starting"
+		case tick >= 5:
+			c.Status = "running"
+			c.Health = "healthy"
+			c.Uptime = time.Duration(idx+1)*42*time.Second + time.Duration(tick)*time.Second
+		}
 	}
 	return c
 }
