@@ -65,12 +65,14 @@ If you have one Compose file and run it twice a month, you probably don't need t
 No Docker required — demo mode ships a fake homelab so you can kick the tires first:
 
 ```sh
-git clone https://github.com/cwklurks/dockpose.git
-cd dockpose && go build -o dockpose ./cmd/dockpose
-./dockpose --demo
+brew tap cwklurks/tap
+brew install dockpose
+dockpose --demo
 ```
 
 You'll drop into a synthetic fleet (media, monitoring, traefik, dev-api, authentik) with live-rotating statuses. Every destructive keybind is a safe no-op, so mash away — `?` shows help, `q` quits.
+
+Not on Homebrew? See [Install](#install) for `curl`, `.deb`, `.rpm`, and Windows zip.
 
 ## Features
 
@@ -238,6 +240,13 @@ A 2-second tick refreshes container states for every known stack using the same 
 ### Homebrew (macOS + Linux)
 
 ```sh
+brew tap cwklurks/tap
+brew install dockpose
+```
+
+Once tapped, `brew upgrade dockpose` keeps you current on every release. Or as a single command:
+
+```sh
 brew install cwklurks/tap/dockpose
 ```
 
@@ -256,13 +265,13 @@ Replace `$(uname -s)_$(uname -m)` with e.g. `Linux_arm64` if auto-detection does
 Grab the `.deb` from the [latest release](https://github.com/cwklurks/dockpose/releases/latest) and:
 
 ```sh
-sudo dpkg -i dockpose_0.1.0_amd64.deb   # or _arm64.deb
+sudo dpkg -i dockpose_*_amd64.deb   # or _arm64.deb
 ```
 
 ### Fedora / RHEL
 
 ```sh
-sudo rpm -i dockpose-0.1.0-1.x86_64.rpm   # or .aarch64.rpm
+sudo rpm -i dockpose-*.x86_64.rpm   # or .aarch64.rpm
 ```
 
 ### Windows
