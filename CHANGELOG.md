@@ -7,13 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **.env editor input.** Editing now mutates the active model instead of a copy, supports text entry/backspace/clear, commits on enter, preserves blank/comment lines, keeps simple quote/export formatting, and preserves the existing file mode when saving.
+- **Docker context switching.** The context picker no longer quits the TUI on selection. Selecting a context now rebuilds the Docker SDK client for that context and compose/exec/inspect actions use the same context.
+- **Log viewer controls.** `/` now opens an in-view log filter, `t` shows received-at timestamps, and follow mode correctly renders the newest log lines.
+- **Binary install docs.** The raw archive install command now matches GoReleaser's versioned asset names.
+
 ### Planned
 
 - AUR `dockpose-bin` and Scoop manifest via GoReleaser
 - Persistent stack registry cache at `~/.config/dockpose/stacks.toml`
-- Healthcheck-aware status (read Docker `State.Health.Status` rather than treating every running container as healthy)
 - Container events stream (replace 2s polling with the Docker events API for sub-second updates)
 - Additional color themes (currently GitHub Dark only)
+
+## [0.2.0] — 2026-04-22
+
+### Added
+
+- **Healthcheck-aware status.** Running containers with Docker health states are now classified as healthy, unhealthy, or starting in the stack list and service detail views.
+
+### Fixed
+
+- **Help overlay routing.** `?` opens help consistently from every view.
+- **Inspect footer copy.** The inspect view footer now matches the actual back key behavior.
 
 ## [0.1.6] — 2026-04-21
 
@@ -57,11 +74,11 @@ Initial public release. Ships cross-compiled binaries for Linux, macOS, and Wind
 
 ### Known gaps
 
-- Every running container is reported as healthy (no healthcheck introspection yet).
 - Stack discovery rescans on every launch instead of reading the `~/.config/dockpose/stacks.toml` cache the spec envisions.
 - No filter or cursor persistence across sessions.
 - Only one color theme (GitHub Dark).
 
-[Unreleased]: https://github.com/cwklurks/dockpose/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/cwklurks/dockpose/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/cwklurks/dockpose/releases/tag/v0.2.0
 [0.1.6]: https://github.com/cwklurks/dockpose/releases/tag/v0.1.6
 [0.1.0]: https://github.com/cwklurks/dockpose/releases/tag/v0.1.0

@@ -273,12 +273,21 @@ brew install cwklurks/tap/dockpose
 ### Linux (binary)
 
 ```sh
-curl -fsSL https://github.com/cwklurks/dockpose/releases/latest/download/dockpose_$(uname -s)_$(uname -m).tar.gz \
+tag=$(curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/cwklurks/dockpose/releases/latest)
+tag=${tag##*/}
+version=${tag#v}
+os=$(uname -s)
+arch=$(uname -m)
+case "$arch" in
+  x86_64|amd64) arch=x86_64 ;;
+  arm64|aarch64) arch=arm64 ;;
+esac
+curl -fsSL "https://github.com/cwklurks/dockpose/releases/download/${tag}/dockpose_${version}_${os}_${arch}.tar.gz" \
   | sudo tar -xz -C /usr/local/bin dockpose
 dockpose --version
 ```
 
-Replace `$(uname -s)_$(uname -m)` with e.g. `Linux_arm64` if auto-detection doesn't match your shell.
+If auto-detection does not match your platform, grab the matching archive from the [latest release](https://github.com/cwklurks/dockpose/releases/latest).
 
 ### Debian / Ubuntu
 

@@ -79,28 +79,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Cursor--
 			}
 		case "enter":
+			if len(m.Contexts) == 0 {
+				m.Error = "no docker contexts found"
+				return m, nil
+			}
 			m.Selected = m.Contexts[m.Cursor].Name
 			m.Active = false
-			if err := switchDockerContext(m.Selected); err != nil {
-				m.Error = err.Error()
-				m.Active = true
-			}
-			return m, tea.Quit
+			return m, nil
 		case "esc":
 			m.Active = false
 		}
 	}
 	return m, nil
-}
-
-// switchDockerContext sets the active Docker context via `docker context use`.
-func switchDockerContext(name string) error {
-	// Use docker context use command
-	cmd := exec.Command("docker", "context", "use", name)
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	return nil
 }
 
 // Init implements tea.Model for the context picker.

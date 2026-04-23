@@ -76,11 +76,12 @@ type AppModel struct {
 	filterEditing bool
 	showHelp      bool
 
-	detail        *stackdetail.ServiceDetailModel
-	logModel      *logview.LogModel
-	inspectText   string
-	lastActionMsg string
-	lastActionAt  time.Time
+	detail          *stackdetail.ServiceDetailModel
+	logModel        *logview.LogModel
+	inspectText     string
+	lastActionMsg   string
+	lastActionAt    time.Time
+	selectedContext string
 
 	profilePicker *profilepicker.Model
 	envEditor     *envedit.Model
@@ -201,7 +202,11 @@ func (m AppModel) handleInspectKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m AppModel) handleLogsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.logModel != nil {
+		wasFiltering := m.logModel.Filtering
 		m.logModel.Update(msg)
+		if wasFiltering || m.logModel.Filtering {
+			return m, nil
+		}
 	}
 	if k := msg.String(); k == "esc" || k == "q" || k == "ctrl+c" {
 		if m.logModel != nil {
@@ -326,7 +331,7 @@ func (m AppModel) handleStackUp() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, runAction(func(ctx context.Context) error {
-		return stack.Up(ctx, st.Path, nil)
+		return stack.UpWithDockerContext(ctx, st.Path, nil, m.selectedContext)
 	})
 }
 
@@ -339,7 +344,9 @@ func (m AppModel) handleStackDown() (tea.Model, tea.Cmd) {
 		m.flash("demo: would `compose down` " + st.Name)
 		return m, nil
 	}
-	return m, runAction(func(ctx context.Context) error { return stack.Down(ctx, st.Path) })
+	return m, runAction(func(ctx context.Context) error {
+		return stack.DownWithDockerContext(ctx, st.Path, m.selectedContext)
+	})
 }
 
 func (m AppModel) handleStackRestart() (tea.Model, tea.Cmd) {
@@ -351,7 +358,9 @@ func (m AppModel) handleStackRestart() (tea.Model, tea.Cmd) {
 		m.flash("demo: would `compose restart` " + st.Name)
 		return m, nil
 	}
-	return m, runAction(func(ctx context.Context) error { return stack.Restart(ctx, st.Path, "") })
+	return m, runAction(func(ctx context.Context) error {
+		return stack.RestartWithDockerContext(ctx, st.Path, "", m.selectedContext)
+	})
 }
 
 func (m AppModel) handleStackPull() (tea.Model, tea.Cmd) {
@@ -363,7 +372,9 @@ func (m AppModel) handleStackPull() (tea.Model, tea.Cmd) {
 		m.flash("demo: would `compose pull` " + st.Name)
 		return m, nil
 	}
-	return m, runAction(func(ctx context.Context) error { return stack.Pull(ctx, st.Path) })
+	return m, runAction(func(ctx context.Context) error {
+		return stack.PullWithDockerContext(ctx, st.Path, m.selectedContext)
+	})
 }
 
 func (m AppModel) openEnvEditor() (tea.Model, tea.Cmd) {
@@ -429,18 +440,18 @@ func (m *AppModel) handleServiceAction(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "x":
 		return m, runAction(func(ctx context.Context) error {
-			return stack.Stop(ctx, path, info.ServiceName)
+			return stack.StopWithDockerContext(ctx, path, info.ServiceName, m.selectedContext)
 		})
 	case "R":
 		return m, runAction(func(ctx context.Context) error {
-			return stack.RestartService(ctx, path, info.ServiceName)
+			return stack.RestartWithDockerContext(ctx, path, info.ServiceName, m.selectedContext)
 		})
 	case "s":
 		if info.ContainerID == "" {
 			m.flash("no container for service")
 			return m, nil
 		}
-		c := exec.Command("docker", "exec", "-it", info.ContainerID, "/bin/sh")
+		c := exec.Command("docker", dockerCLIArgs(m.selectedContext, "exec", "-it", info.ContainerID, "/bin/sh")...)
 		return m, tea.ExecProcess(c, func(err error) tea.Msg {
 			return actionResultMsg{err: err}
 		})
@@ -482,7 +493,7 @@ func (m *AppModel) openLogViewer(info stackdetail.ServiceInfo) tea.Cmd {
 		return nil
 	}
 	ctx := context.Background()
-	logCh, err := docker.StreamLogs(ctx, info.ContainerID, true, 200)
+	logCh, err := m.streamLogs(ctx, info.ContainerID, true, 200)
 	if err != nil {
 		m.flash("logs: " + err.Error())
 		return nil
@@ -519,7 +530,7 @@ func (m *AppModel) inspectContainer(info stackdetail.ServiceInfo) tea.Cmd {
 		m.flash("no container for service")
 		return nil
 	}
-	out, err := stack.Inspect(context.Background(), info.ContainerID)
+	out, err := stack.InspectWithDockerContext(context.Background(), info.ContainerID, m.selectedContext)
 	if err != nil {
 		m.flash("inspect: " + err.Error())
 		return nil
@@ -536,6 +547,40 @@ func runAction(fn func(ctx context.Context) error) tea.Cmd {
 		defer cancel()
 		return actionResultMsg{err: fn(ctx)}
 	}
+}
+
+func (m *AppModel) useDockerContext(name string) error {
+	m.source = docker.NewContextSource(name)
+	m.selectedContext = name
+	m.refreshStackStatuses(context.Background())
+	return nil
+}
+
+func (m AppModel) streamLogs(ctx context.Context, containerID string, follow bool, tail int) (<-chan string, error) {
+	if m.selectedContext != "" {
+		return docker.StreamLogsWithContext(ctx, m.selectedContext, containerID, follow, tail)
+	}
+	if src, ok := m.source.(*docker.ClientSource); ok && src.Client != nil {
+		return docker.StreamLogsWithClient(ctx, src.Client, containerID, follow, tail)
+	}
+	return docker.StreamLogs(ctx, containerID, follow, tail)
+}
+
+func (m AppModel) contextLabel() string {
+	if m.selectedContext == "" {
+		return "local"
+	}
+	return truncate(m.selectedContext, 18)
+}
+
+func dockerCLIArgs(dockerContext string, args ...string) []string {
+	if dockerContext == "" {
+		return args
+	}
+	out := make([]string, 0, len(args)+2)
+	out = append(out, "--context", dockerContext)
+	out = append(out, args...)
+	return out
 }
 
 // PollingCmd returns a tea.Cmd that sends a tickMsg after each interval.
@@ -650,7 +695,7 @@ func (m *AppModel) handleProfilePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.CurrentView = ViewStackList
 		m.profilePicker = nil
 		return m, runAction(func(ctx context.Context) error {
-			return stack.Up(ctx, st.Path, profiles)
+			return stack.UpWithDockerContext(ctx, st.Path, profiles, m.selectedContext)
 		})
 	}
 	return m, cmd
@@ -680,11 +725,17 @@ func (m *AppModel) handleContextPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	ctx, cmd := m.contextPicker.Update(msg)
 	*m.contextPicker = ctx.(contextpicker.Model)
 	if !m.contextPicker.IsActive() {
-		if m.contextPicker.SelectedContext() != "" {
-			m.flash("context: " + m.contextPicker.SelectedContext())
+		selected := m.contextPicker.SelectedContext()
+		if selected != "" {
+			if err := m.useDockerContext(selected); err != nil {
+				m.flash("context: " + err.Error())
+			} else {
+				m.flash("context: " + selected)
+			}
 		}
 		m.CurrentView = ViewStackList
 		m.contextPicker = nil
+		return m, nil
 	}
 	return m, cmd
 }
@@ -730,7 +781,7 @@ func (m AppModel) renderHeader(subtitle string) string {
 	if m.demoMode {
 		chips = append(chips, theme.DemoChipStyle.Render(" demo "))
 	} else {
-		chips = append(chips, theme.ContextChipStyle.Render(" local "))
+		chips = append(chips, theme.ContextChipStyle.Render(" "+m.contextLabel()+" "))
 	}
 	if subtitle != "" {
 		chips = append(chips, theme.MutedStyle.Render(subtitle))

@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,32 +26,54 @@ func jsonMarshalIndent(v any, prefix, indent string) ([]byte, error) {
 // Up runs `docker compose up -d` for the compose file at path, optionally
 // activating the given profiles.
 func Up(ctx context.Context, path string, profiles []string) error {
+	return UpWithDockerContext(ctx, path, profiles, "")
+}
+
+// UpWithDockerContext runs `docker --context <name> compose up -d` when
+// dockerContext is non-empty.
+func UpWithDockerContext(ctx context.Context, path string, profiles []string, dockerContext string) error {
 	args := []string{"compose", "-f", path}
 	for _, p := range profiles {
 		args = append(args, "--profile", p)
 	}
 	args = append(args, "up", "-d")
-	return runCompose(ctx, path, args)
+	return runCompose(ctx, path, dockerContext, args)
 }
 
 // Down runs `docker compose down` for the compose file at path.
 func Down(ctx context.Context, path string) error {
-	return runCompose(ctx, path, []string{"compose", "-f", path, "down"})
+	return DownWithDockerContext(ctx, path, "")
+}
+
+// DownWithDockerContext runs `docker --context <name> compose down` when
+// dockerContext is non-empty.
+func DownWithDockerContext(ctx context.Context, path, dockerContext string) error {
+	return runCompose(ctx, path, dockerContext, []string{"compose", "-f", path, "down"})
 }
 
 // Restart runs `docker compose restart [service]`. If service is empty, all
 // services are restarted.
 func Restart(ctx context.Context, path, service string) error {
+	return RestartWithDockerContext(ctx, path, service, "")
+}
+
+// RestartWithDockerContext runs `docker --context <name> compose restart`.
+func RestartWithDockerContext(ctx context.Context, path, service, dockerContext string) error {
 	args := []string{"compose", "-f", path, "restart"}
 	if service != "" {
 		args = append(args, service)
 	}
-	return runCompose(ctx, path, args)
+	return runCompose(ctx, path, dockerContext, args)
 }
 
 // Pull runs `docker compose pull` for the compose file at path.
 func Pull(ctx context.Context, path string) error {
-	return runCompose(ctx, path, []string{"compose", "-f", path, "pull"})
+	return PullWithDockerContext(ctx, path, "")
+}
+
+// PullWithDockerContext runs `docker --context <name> compose pull`.
+func PullWithDockerContext(ctx context.Context, path, dockerContext string) error {
+	return runCompose(ctx, path, dockerContext, []string{"compose", "-f", path, "pull"})
 }
 
 // Logs streams container logs for a service in the stack via the Docker SDK.
@@ -103,11 +126,16 @@ func Logs(ctx context.Context, path, service string) (<-chan string, error) {
 
 // Stop runs `docker compose stop [service]`. If service is empty, all services are stopped.
 func Stop(ctx context.Context, path, service string) error {
+	return StopWithDockerContext(ctx, path, service, "")
+}
+
+// StopWithDockerContext runs `docker --context <name> compose stop`.
+func StopWithDockerContext(ctx context.Context, path, service, dockerContext string) error {
 	args := []string{"compose", "-f", path, "stop"}
 	if service != "" {
 		args = append(args, service)
 	}
-	return runCompose(ctx, path, args)
+	return runCompose(ctx, path, dockerContext, args)
 }
 
 // RestartService is an alias for Restart scoped to a specific service.
@@ -140,6 +168,25 @@ func Exec(ctx context.Context, containerID string, cmd []string) error {
 
 // Inspect returns `docker inspect <id>` output as a JSON string.
 func Inspect(ctx context.Context, containerID string) (string, error) {
+	return InspectWithDockerContext(ctx, containerID, "")
+}
+
+// InspectWithDockerContext returns `docker inspect <id>` output for a selected
+// Docker context. The default path uses the SDK; named contexts use the Docker
+// CLI so context resolution matches compose/exec actions.
+func InspectWithDockerContext(ctx context.Context, containerID, dockerContext string) (string, error) {
+	if dockerContext != "" {
+		c := exec.CommandContext(ctx, "docker", dockerCLIArgs(dockerContext, "inspect", containerID)...)
+		out, err := c.Output()
+		if err != nil {
+			return "", fmt.Errorf("inspect: %w", err)
+		}
+		var pretty bytes.Buffer
+		if err := json.Indent(&pretty, out, "", "  "); err == nil {
+			return pretty.String(), nil
+		}
+		return string(out), nil
+	}
 	cli, err := docker.New()
 	if err != nil {
 		return "", fmt.Errorf("docker client: %w", err)
@@ -156,13 +203,23 @@ func Inspect(ctx context.Context, containerID string) (string, error) {
 	return string(b), nil
 }
 
-func runCompose(ctx context.Context, path string, args []string) error {
-	cmd := exec.CommandContext(ctx, "docker", args...)
+func runCompose(ctx context.Context, path, dockerContext string, args []string) error {
+	cmd := exec.CommandContext(ctx, "docker", dockerCLIArgs(dockerContext, args...)...)
 	cmd.Dir = filepath.Dir(path)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker %v: %w", args, err)
+		return fmt.Errorf("docker %v: %w", dockerCLIArgs(dockerContext, args...), err)
 	}
 	return nil
+}
+
+func dockerCLIArgs(dockerContext string, args ...string) []string {
+	if dockerContext == "" {
+		return args
+	}
+	out := make([]string, 0, len(args)+2)
+	out = append(out, "--context", dockerContext)
+	out = append(out, args...)
+	return out
 }
