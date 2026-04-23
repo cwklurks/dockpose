@@ -24,19 +24,19 @@
 
 <img src="docs/media/demo.gif" alt="dockpose demo: stack list with status dots, dependency DAG, and live filter" width="100%">
 
-<strong>A keyboard-driven dashboard for your Docker Compose stacks.</strong>
+<strong>A keyboard-driven command center for Docker Compose fleets.</strong>
 <br>
-Think <em>k9s</em>, but for Compose: one view of every stack you run, start/stop/restart<br>without leaving the terminal, works locally or over SSH.
+For people running many Compose stacks across a laptop, NAS, or VPS:<br>one terminal view for stack discovery, status, dependencies, logs, and actions.
 
 <p>
-  <a href="#try-it-in-30-seconds">Try It</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#who-its-for">Who It's For</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#features">Features</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#how-it-works">How It Works</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#keybinds">Keybinds</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#install">Install</a>
+  <a href="#try-it-in-30-seconds">Try It</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#who-its-for">Who It's For</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#why-not-lazydocker-dockge-or-portainer">Compared To</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#features">Features</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#how-it-works">How It Works</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#keybinds">Keybinds</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#install">Install</a>
 </p>
 
 </div>
 
 ## What is this?
 
-If you run a homelab, a VPS, or a handful of services at work with Docker Compose, you probably have a directory of `compose.yml` files and a muscle memory full of:
+If you run a homelab, a VPS, or a handful of services at work with Docker Compose, you probably do not have one stack. You have a sprawl: media, monitoring, auth, reverse proxy, a few dev stacks, maybe a second host over SSH. And with that sprawl comes a lot of:
 
 ```sh
 cd ~/docker/media && docker compose pull && docker compose up -d
@@ -44,12 +44,12 @@ cd ~/docker/monitoring && docker compose restart grafana
 cd ~/docker/traefik && docker compose logs -f --tail 200
 ```
 
-dockpose replaces that dance. It finds every Compose file on your machine, shows them all in one list with live status, and turns every common action — **up, down, restart, pull, logs, shell, edit .env** — into a single keystroke. It's the tool you reach for instead of `cd`-ing around or opening Portainer.
+dockpose replaces that dance with a stack-first terminal UI. Point it at the directories that matter, and it gives you one place to see every Compose stack, drill into dependencies, tail logs, edit `.env`, and run common actions without `cd`-ing around or opening a web panel.
 
-The core idea: **a stack is the unit you care about**, not an individual container. Most container TUIs get this backwards.
+The core idea is simple: **a stack is the unit you care about**, not an individual container. If lazydocker is a broad Docker cockpit, dockpose is the tool for people whose real problem is managing a fleet of Compose projects.
 
 > [!NOTE]
-> v0.1.0 is live on GitHub Releases and Homebrew — see [Install](#install). AUR and Scoop are on the roadmap.
+> v0.2.0 is live on GitHub Releases and Homebrew — see [Install](#install). AUR and Scoop are on the roadmap.
 
 ## Who It's For
 
@@ -59,6 +59,18 @@ The core idea: **a stack is the unit you care about**, not an individual contain
 - **Anyone on SSH** who wants a real UI for their remote Docker host without installing a web panel
 
 If you have one Compose file and run it twice a month, you probably don't need this. If you have a `~/docker` folder with ten subdirectories, dockpose is for you.
+
+## Why Not lazydocker, Dockge, or Portainer?
+
+They are good tools. dockpose exists because the Compose-heavy workflow still has a gap.
+
+| Tool | Best at | Where dockpose differs |
+| --- | --- | --- |
+| **lazydocker** | Broad Docker/container workflows in a terminal UI | dockpose is more opinionated about **Compose stacks as the primary object**, especially when you have many projects spread across directories or hosts |
+| **Dockge** | Browser-based Compose management | dockpose stays **keyboard-first and SSH-native** with no web UI or agent to keep running |
+| **Portainer** | Full web control plane for Docker and beyond | dockpose is intentionally smaller: **single binary, terminal-native, stack-focused**, and fast to jump into over SSH |
+
+If your main pain is containers in general, `lazydocker` is a strong fit. If your pain is "I have too many Compose stacks scattered across my machines," that's the problem dockpose is built around.
 
 ## Try It in 30 Seconds
 
@@ -71,6 +83,14 @@ dockpose --demo
 ```
 
 You'll drop into a synthetic fleet (media, monitoring, traefik, dev-api, authentik) with live-rotating statuses. Every destructive keybind is a safe no-op, so mash away — `?` shows help, `q` quits.
+
+Real-world usage looks like this:
+
+```sh
+dockpose ~/docker ~/homelab ~/projects
+```
+
+That turns dockpose into a single terminal view over the stack roots you actually care about.
 
 Not on Homebrew? See [Install](#install) for `curl`, `.deb`, `.rpm`, and Windows zip.
 
@@ -86,11 +106,11 @@ The main view is a list of **stacks**, not containers. Hitting `u` runs `docker 
 </details>
 
 <details open>
-<summary><strong>Auto-discovery</strong> — finds your compose files on first launch</summary>
+<summary><strong>Multi-root discovery</strong> — point it at your stack directories</summary>
 
 <br>
 
-Scans `~/docker`, `~/homelab`, `~/projects`, `~/stacks`, and the current directory for `compose.y*ml`, then caches what it finds at `~/.config/dockpose/stacks.toml`. No manual registration, no configuration to write just to see your stuff.
+Give dockpose one or more roots and it walks them for `compose.yml` / `compose.yaml` files. That lets you manage a real homelab or dev fleet from one place instead of hopping directory to directory.
 
 </details>
 
@@ -108,7 +128,7 @@ Each stack's detail view draws a layered ASCII dependency graph from its `depend
 
 <br>
 
-Point dockpose at any Docker context — `ssh://you@homelab`, `tcp://...`, whatever — and switch between them with `c`. The header always shows which daemon you're talking to, so you never `down` production when you meant staging. No agent to install on the remote host; it's just Docker's built-in SSH transport.
+Use dockpose against whatever Docker daemon your current context targets — local socket, `ssh://you@homelab`, `tcp://...`, whatever. No agent to install on the remote host; it rides on Docker's built-in transport.
 
 </details>
 
@@ -152,7 +172,7 @@ One Go binary, cross-compiled for macOS, Linux, and Windows on amd64 and arm64. 
 
 ### The 30-second version
 
-1. On first launch, dockpose walks a few directories looking for `compose.yml` / `compose.yaml` files.
+1. On launch, dockpose walks the roots you pass it, looking for `compose.yml` / `compose.yaml` files.
 2. It parses each one with the **same library Docker Compose itself uses**, so there's no "dockpose dialect" — if `docker compose` accepts it, dockpose does too.
 3. It talks to the Docker daemon over its normal socket (or SSH, for remote hosts), and polls container state every 2 seconds to keep the UI honest.
 4. When you press a key, it shells out to `docker compose` under the hood. dockpose is a UI layer, not a reimplementation — your stacks stay yours.
@@ -318,11 +338,11 @@ vhs docs/media/demo.tape
 
 Near-term, in rough priority order:
 
-- **AUR + Scoop** — Arch and Windows packaging. Homebrew + deb/rpm shipped in v0.1.0.
+- **AUR + Scoop** — Arch and Windows packaging. Homebrew + deb/rpm shipped already.
 - **Persistent stack registry** — honor the `~/.config/dockpose/stacks.toml` cache and refresh it lazily instead of rescanning every launch.
 - **Filter persistence** — remember active filter and cursor position across sessions.
 - **Pull progress** — live `docker compose pull` progress in the status bar instead of a single "done" toast.
-- **Healthcheck-aware status** — distinguish "running but unhealthy" using Docker healthchecks instead of treating every running container as healthy.
+- **Smarter multi-root defaults** — make "point me at my homelab/dev stack roots" easier on first run.
 - **Container events stream** — replace the 2s poll with Docker's events API for sub-second updates.
 - **Theming** — more than the current GitHub Dark palette.
 
