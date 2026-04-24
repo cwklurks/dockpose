@@ -1,0 +1,65 @@
+name: Bug report
+description: Report a reproducible dockpose bug
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Repro steps and environment details are the fastest path to a fix.
+  - type: input
+    id: version
+    attributes:
+      label: dockpose version
+      description: Run `dockpose --version`.
+      placeholder: dockpose 0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options:
+        - Homebrew
+        - .deb
+        - .rpm
+        - tarball / zip
+        - built from source
+        - other
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / architecture
+      placeholder: macOS arm64, Linux x86_64, Windows x86_64
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Include the command you ran, key presses, and what stack shape triggers it.
+      placeholder: |
+        1. Run `dockpose --demo`
+        2. Press ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Extra context
+      description: Logs, screenshots, compose snippets, or Docker context details. Redact secrets.

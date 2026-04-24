@@ -17,6 +17,9 @@ type Entry struct {
 	Value   string
 	Comment string
 	Masked  bool
+	Blank   bool
+	Prefix  string
+	Quote   string
 }
 
 // Model is the .env editor state.
@@ -42,10 +45,19 @@ func New(stackName, stackPath string) Model {
 		StackName: stackName,
 		StackPath: stackPath,
 		Entries:   entries,
-		Cursor:    0,
+		Cursor:    firstEditableIndex(entries),
 		Revealed:  make(map[string]bool),
 		Active:    true,
 	}
+}
+
+func firstEditableIndex(entries []Entry) int {
+	for i, e := range entries {
+		if e.Key != "" {
+			return i
+		}
+	}
+	return 0
 }
 
 // parseEnvFile reads a .env file and returns a list of entries.
@@ -60,14 +72,20 @@ func parseEnvFile(path string) []Entry {
 	for _, line := range lines {
 		line = strings.TrimRight(line, "\r")
 		if strings.TrimSpace(line) == "" {
+			entries = append(entries, Entry{Blank: true})
 			continue
 		}
 		if strings.HasPrefix(line, "#") {
 			entries = append(entries, Entry{
-				Comment: strings.TrimSpace(line),
+				Comment: line,
 				Masked:  false,
 			})
 			continue
+		}
+		prefix := ""
+		if strings.HasPrefix(line, "export ") {
+			prefix = "export "
+			line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
 		}
 		// Parse KEY=VALUE
 		parts := strings.SplitN(line, "=", 2)
@@ -76,13 +94,22 @@ func parseEnvFile(path string) []Entry {
 		}
 		key := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
-		// Remove quotes if present
-		value = strings.Trim(value, "\"")
+		quote := ""
+		if len(value) >= 2 {
+			first := value[:1]
+			last := value[len(value)-1:]
+			if (first == `"` || first == `'`) && first == last {
+				quote = first
+				value = value[1 : len(value)-1]
+			}
+		}
 		masked := isSensitive(key)
 		entries = append(entries, Entry{
 			Key:    key,
 			Value:  value,
 			Masked: masked,
+			Prefix: prefix,
+			Quote:  quote,
 		})
 	}
 	return entries
@@ -112,7 +139,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, m.handleEnvKey(keyMsg)
 }
 
-func (m Model) handleEnvKey(msg tea.KeyMsg) tea.Cmd {
+func (m *Model) handleEnvKey(msg tea.KeyMsg) tea.Cmd {
+	if m.Editing {
+		m.handleEditKey(msg)
+		return nil
+	}
 	switch msg.String() {
 	case "j", "down":
 		m.handleMoveDown()
@@ -134,21 +165,66 @@ func (m Model) handleEnvKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
+func (m *Model) handleEditKey(msg tea.KeyMsg) {
+	switch msg.Type {
+	case tea.KeyEnter:
+		m.commitEdit()
+	case tea.KeyEsc:
+		m.Editing = false
+	case tea.KeyBackspace:
+		if len(m.EditValue) > 0 {
+			runes := []rune(m.EditValue)
+			m.EditValue = string(runes[:len(runes)-1])
+		}
+	case tea.KeyCtrlU:
+		m.EditValue = ""
+	case tea.KeySpace:
+		m.EditValue += " "
+	case tea.KeyRunes:
+		m.EditValue += string(msg.Runes)
+	}
+}
+
+func (m *Model) commitEdit() {
+	if m.Cursor < 0 || m.Cursor >= len(m.Entries) {
+		m.Editing = false
+		return
+	}
+	if m.Entries[m.Cursor].Key == m.EditKey {
+		m.Entries[m.Cursor].Value = m.EditValue
+	}
+	m.Editing = false
+	m.Saved = false
+	m.SaveError = ""
+}
+
 func (m *Model) handleMoveDown() {
-	if m.Cursor < len(m.Entries)-1 && !m.Editing {
-		m.Cursor++
+	if m.Editing {
+		return
+	}
+	for i := m.Cursor + 1; i < len(m.Entries); i++ {
+		if m.Entries[i].Key != "" {
+			m.Cursor = i
+			return
+		}
 	}
 }
 
 func (m *Model) handleMoveUp() {
-	if m.Cursor > 0 && !m.Editing {
-		m.Cursor--
+	if m.Editing {
+		return
+	}
+	for i := m.Cursor - 1; i >= 0; i-- {
+		if m.Entries[i].Key != "" {
+			m.Cursor = i
+			return
+		}
 	}
 }
 
 func (m *Model) handleRevealOne() {
 	if m.Cursor < len(m.Entries) && !m.Editing {
-		if m.Entries[m.Cursor].Masked {
+		if m.Entries[m.Cursor].Key != "" && m.Entries[m.Cursor].Masked {
 			m.Revealed[m.Entries[m.Cursor].Key] = true
 		}
 	}
@@ -187,13 +263,19 @@ func (m *Model) Save() {
 	envPath := filepath.Join(filepath.Dir(m.StackPath), ".env")
 	var lines []string
 	for _, e := range m.Entries {
-		if e.Comment != "" {
+		if e.Blank {
+			lines = append(lines, "")
+		} else if e.Comment != "" {
 			lines = append(lines, e.Comment)
 		} else {
-			lines = append(lines, e.Key+"="+e.Value)
+			lines = append(lines, e.Prefix+e.Key+"="+e.Quote+e.Value+e.Quote)
 		}
 	}
 	content := strings.Join(lines, "\n") + "\n"
+	mode := os.FileMode(0o600)
+	if info, err := os.Stat(envPath); err == nil {
+		mode = info.Mode().Perm()
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(envPath), ".env.*")
 	if err != nil {
 		m.SaveError = "create temp: " + err.Error()
@@ -201,7 +283,13 @@ func (m *Model) Save() {
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		m.SaveError = "chmod: " + err.Error()
+		return
+	}
 	if _, err := tmp.WriteString(content); err != nil {
+		_ = tmp.Close()
 		m.SaveError = "write: " + err.Error()
 		return
 	}
@@ -228,6 +316,10 @@ func (m Model) View() string {
 	s = append(s, "\n")
 
 	for i, e := range m.Entries {
+		if e.Blank {
+			s = append(s, "")
+			continue
+		}
 		if e.Comment != "" {
 			s = append(s, theme.MutedStyle.Render(e.Comment))
 			continue

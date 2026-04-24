@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -20,14 +21,21 @@ type ServiceLog struct {
 	Lines       <-chan string
 }
 
+// LogEntry is one received log line plus the time dockpose observed it.
+type LogEntry struct {
+	Text       string
+	ReceivedAt time.Time
+}
+
 // LogModel is the bubble Tea model for the streaming log viewer.
 type LogModel struct {
 	Services   []ServiceLog
-	Buffer     []string
+	Buffer     []LogEntry
 	Follow     bool
 	Timestamps bool
 	Wrap       bool
 	FilterText string
+	Filtering  bool
 	Cursor     int
 	width      int
 
@@ -39,7 +47,7 @@ type LogModel struct {
 func NewLogModel(services []ServiceLog) LogModel {
 	return LogModel{
 		Services:   services,
-		Buffer:     []string{},
+		Buffer:     []LogEntry{},
 		Follow:     true,
 		Timestamps: false,
 		Wrap:       false,
@@ -70,7 +78,7 @@ func (m *LogModel) streamService(ctx context.Context, svc ServiceLog) {
 				return
 			}
 			m.mu.Lock()
-			m.Buffer = append(m.Buffer, line)
+			m.Buffer = append(m.Buffer, LogEntry{Text: line, ReceivedAt: time.Now()})
 			if len(m.Buffer) > 10000 {
 				m.Buffer = m.Buffer[len(m.Buffer)-10000:]
 			}
@@ -102,40 +110,72 @@ func (m *LogModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *LogModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.Filtering {
+		m.handleFilterKey(msg)
+		return m, nil
+	}
 	switch msg.String() {
 	case "q", "ctrl+c", "esc":
 		m.Stop()
 		return m, tea.Quit
 	case "j", "down":
-		if m.Cursor < len(m.Buffer)-1 {
+		m.Follow = false
+		if m.Cursor < m.maxScrollStart() {
 			m.Cursor++
 		}
 	case "k", "up":
+		m.Follow = false
 		if m.Cursor > 0 {
 			m.Cursor--
 		}
 	case "g":
+		m.Follow = false
 		m.Cursor = 0
 	case "G":
-		m.mu.Lock()
-		m.Cursor = len(m.Buffer) - 1
-		m.mu.Unlock()
+		m.Follow = true
+		m.Cursor = 0
 	case "f":
 		m.Follow = !m.Follow
+		if m.Follow {
+			m.Cursor = 0
+		}
 	case "t":
 		m.Timestamps = !m.Timestamps
 	case "w":
 		m.Wrap = !m.Wrap
 	case "c":
 		m.mu.Lock()
-		m.Buffer = []string{}
+		m.Buffer = []LogEntry{}
 		m.Cursor = 0
 		m.mu.Unlock()
 	case "/":
-		// Filter mode - handled by external input capture
-		// Placeholder: actual filter input handled via separate mechanism
+		m.Filtering = true
+		m.FilterText = ""
+		m.Cursor = 0
 	}
 	return m, nil
+}
+
+func (m *LogModel) handleFilterKey(msg tea.KeyMsg) {
+	switch msg.Type {
+	case tea.KeyEnter:
+		m.Filtering = false
+	case tea.KeyEsc:
+		m.Filtering = false
+		m.FilterText = ""
+	case tea.KeyBackspace:
+		if len(m.FilterText) > 0 {
+			runes := []rune(m.FilterText)
+			m.FilterText = string(runes[:len(runes)-1])
+		}
+	case tea.KeyCtrlU:
+		m.FilterText = ""
+	case tea.KeySpace:
+		m.FilterText += " "
+	case tea.KeyRunes:
+		m.FilterText += string(msg.Runes)
+	}
+	m.Cursor = 0
 }
 
 // SetFilter updates the filter text.
@@ -149,8 +189,12 @@ func (m *LogModel) VisibleLines() []string {
 	defer m.mu.Unlock()
 
 	var lines []string
-	for _, line := range m.Buffer {
-		if m.FilterText == "" || strings.Contains(strings.ToLower(line), strings.ToLower(m.FilterText)) {
+	for _, entry := range m.Buffer {
+		if m.FilterText == "" || strings.Contains(strings.ToLower(entry.Text), strings.ToLower(m.FilterText)) {
+			line := entry.Text
+			if m.Timestamps {
+				line = entry.ReceivedAt.Format("15:04:05") + " " + line
+			}
 			lines = append(lines, line)
 		}
 	}
@@ -200,7 +244,14 @@ func (m *LogModel) renderStatusBar() string {
 	}
 	if m.FilterText != "" {
 		status = append(status, "  ")
-		status = append(status, WarningStyle.Render("filter: "+m.FilterText))
+		label := "filter: " + m.FilterText
+		if m.Filtering {
+			label += "_"
+		}
+		status = append(status, WarningStyle.Render(label))
+	} else if m.Filtering {
+		status = append(status, "  ")
+		status = append(status, WarningStyle.Render("filter: _"))
 	}
 	return lipgloss.JoinHorizontal(0, status...)
 }
@@ -211,15 +262,13 @@ func (m *LogModel) renderLogLines() string {
 	if len(lines) == 0 {
 		return theme.MutedStyle.Render("(no logs)")
 	}
-	start := 0
-	if len(lines) > m.Cursor {
-		start = len(lines) - m.Cursor
+	visible := visibleLogLines
+	start := m.visibleStart(len(lines), visible)
+	end := start + visible
+	if end > len(lines) {
+		end = len(lines)
 	}
-	visible := 50
-	if start+visible > len(lines) {
-		visible = len(lines) - start
-	}
-	for i := start; i < start+visible && i < len(lines); i++ {
+	for i := start; i < end; i++ {
 		line := lines[i]
 		if !m.Wrap {
 			maxWidth := m.width - 10
@@ -234,11 +283,42 @@ func (m *LogModel) renderLogLines() string {
 		s = append(s, theme.NormalStyle.Render(prefix+line))
 		s = append(s, "\n")
 	}
-	if len(lines) > visible {
-		s = append(s, theme.MutedStyle.Render(fmt.Sprintf("(%d lines not shown)", len(lines)-visible)))
+	if start > 0 {
+		s = append(s, theme.MutedStyle.Render(fmt.Sprintf("(%d lines above)", start)))
+		s = append(s, "\n")
+	}
+	if end < len(lines) {
+		s = append(s, theme.MutedStyle.Render(fmt.Sprintf("(%d lines below)", len(lines)-end)))
 		s = append(s, "\n")
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, s...)
+}
+
+const visibleLogLines = 50
+
+func (m *LogModel) visibleStart(total, visible int) int {
+	if total <= visible {
+		return 0
+	}
+	if m.Follow {
+		return total - visible
+	}
+	maxStart := total - visible
+	if m.Cursor < 0 {
+		return 0
+	}
+	if m.Cursor > maxStart {
+		return maxStart
+	}
+	return m.Cursor
+}
+
+func (m *LogModel) maxScrollStart() int {
+	total := len(m.VisibleLines())
+	if total <= visibleLogLines {
+		return 0
+	}
+	return total - visibleLogLines
 }
 
 func max(a, b int) int {
